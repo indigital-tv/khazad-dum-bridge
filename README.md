@@ -1,6 +1,6 @@
 # Mux Signed Playback Demo (Hardened)
 
-Demo completo front+back per Mux Signed Playback, pronto per Vercel e static hosting (GitHub Pages) puntando al backend pubblico.
+Demo completo frontend+backend per Mux Signed Playback, pronto per Vercel e static hosting (GitHub Pages) puntando al backend pubblico.
 
 ## Requisiti
 - Node 18+
