@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo Mux Player Signed</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mux/mux-player"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 24px; background: #0b0d12; color: #e7eef8; }
+        header { margin-bottom: 16px; }
+        .wrap { max-width: 960px; margin: 0 auto; }
+        mux-player { width: 100%; height: 56.25vw; max-height: 70vh; background: #000; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+        form { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        input, button { padding: 10px 12px; border-radius: 8px; border: 1px solid #2a3242; background: #141925; color: #e7eef8; }
+        button { background: #2563eb; border: none; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        .muted { color: #97a7c0; font-size: 12px; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 720px) { form, .row { grid-template-columns: 1fr; } mux-player { height: auto; aspect-ratio: 16/9; } }
+    </style>
+    <link rel="preconnect" href="https://cdn.mux.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <meta name="robots" content="noindex" />
+</head>
+<body>
+    <div class="wrap">
+        <header>
+            <h1>Demo Signed Playback</h1>
+            <p class="muted">Passa parametri via query string: <code>?playbackId=...&envKey=...&apiBase=...&authToken=...&usePost=true</code></p>
+        </header>
+
+        <mux-player id="player" autoplay controls></mux-player>
+
+        <form id="configForm">
+            <div class="row">
+                <input id="playbackId" name="playbackId" placeholder="Playback ID" required />
+                <input id="envKey" name="envKey" placeholder="MUX Environment Key" required />
+            </div>
+            <div class="row">
+                <input id="apiBase" name="apiBase" placeholder="API base (es. /api/token)" />
+                <input id="startTime" name="startTime" placeholder="Start time (es. 30s o 1m10s)" />
+            </div>
+            <div class="row">
+                <input id="authToken" name="authToken" placeholder="X-Auth-Token (opzionale)" />
+                <input id="usePost" name="usePost" placeholder="usePost (true/false)" />
+            </div>
+            <button type="submit">Aggiorna</button>
+        </form>
+
+        <p class="muted">Suggerimento: su Vercel, l'endpoint sarà <code>/api/token</code>. Su GitHub Pages puoi puntare a un backend pubblico.</p>
+    </div>
+
+    <script>
+        function getParams() {
+            const url = new URL(window.location.href);
+            return Object.fromEntries(url.searchParams.entries());
+        }
+
+        function setParams(params) {
+            const url = new URL(window.location.href);
+            Object.entries(params).forEach(([k, v]) => {
+                if (v === undefined || v === null || v === '') url.searchParams.delete(k); else url.searchParams.set(k, v);
+            });
+            history.replaceState(null, '', url.toString());
+        }
+
+        function updatePlayerFromParams() {
+            const params = getParams();
+            const player = document.getElementById('player');
+            if (params.playbackId) player.setAttribute('playback-id', params.playbackId);
+            if (params.envKey) player.setAttribute('env-key', params.envKey);
+            const fetcher = params.apiBase || '/api/token';
+            const fetcherUrl = buildTokenFetcher(fetcher);
+            const needsCustomFetcher = params.authToken || (params.usePost && params.usePost.toString() === 'true');
+            if (needsCustomFetcher) {
+                player.tokenFetcher = async (playbackId) => {
+                    const headers = { 'Content-Type': 'application/json' };
+                    if (params.authToken) headers['X-Auth-Token'] = params.authToken;
+                    let res;
+                    const usePost = params.usePost && params.usePost.toString() === 'true';
+                    if (usePost) {
+                        res = await fetch(fetcherUrl, {
+                            method: 'POST',
+                            headers,
+                            body: JSON.stringify({ playbackId })
+                        });
+                    } else {
+                        const sep = fetcherUrl.includes('?') ? '&' : '?';
+                        const urlWithId = `${fetcherUrl}${sep}playbackId=${encodeURIComponent(playbackId)}`;
+                        res = await fetch(urlWithId, { method: 'GET', headers });
+                    }
+                    if (!res.ok) throw new Error('Token fetch failed');
+                    const json = await res.json();
+                    return json.token;
+                };
+            } else {
+                player.setAttribute('token-fetcher', fetcherUrl);
+            }
+            if (params.startTime) player.setAttribute('start-time', params.startTime);
+
+            document.getElementById('playbackId').value = params.playbackId || '';
+            document.getElementById('envKey').value = params.envKey || '';
+            document.getElementById('apiBase').value = params.apiBase || '';
+            document.getElementById('startTime').value = params.startTime || '';
+            document.getElementById('authToken').value = params.authToken || '';
+            document.getElementById('usePost').value = params.usePost || '';
+        }
+
+        function buildTokenFetcher(base) {
+            if (!base) return '/api/token';
+            try {
+                const u = new URL(base, window.location.origin);
+                if (u.origin !== window.location.origin) {
+                    return u.toString();
+                }
+                return `${u.pathname}${u.search}` || '/api/token';
+            } catch (e) {
+                return base;
+            }
+        }
+
+        document.getElementById('configForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const form = new FormData(e.currentTarget);
+            const next = {
+                playbackId: form.get('playbackId'),
+                envKey: form.get('envKey'),
+                apiBase: form.get('apiBase'),
+                startTime: form.get('startTime'),
+                authToken: form.get('authToken'),
+                usePost: form.get('usePost')
+            };
+            setParams(next);
+            updatePlayerFromParams();
+        });
+
+        updatePlayerFromParams();
+    </script>
+
+</body>
+</html>
